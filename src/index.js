@@ -1,5 +1,6 @@
 // run the polyfills
 require('./polyfill');
+console.log('CUSTOM PIXI :D');
 
 var core = module.exports = require('./core');
 
