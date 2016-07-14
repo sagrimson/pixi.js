@@ -16,5 +16,7 @@ module.exports = {
     BlurXFilter:        require('./blur/BlurXFilter'),
     BlurYFilter:        require('./blur/BlurYFilter'),
     ColorMatrixFilter:  require('./colormatrix/ColorMatrixFilter'),
-    VoidFilter:         require('./void/VoidFilter')
+    VoidFilter:         require('./void/VoidFilter'),
+    GlowFilter:         require('./glow/GlowFilter'),
+    DropShadowFilter:         require('./glow/DropShadowFilter')
 };

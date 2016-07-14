@@ -51,7 +51,6 @@ var generateFragBlurSource = function(kernelSize)
     fragSource = fragSource.replace('%blur%', blurLoop);
     fragSource = fragSource.replace('%size%', kernelSize);
 
-
     return fragSource;
 };
 
