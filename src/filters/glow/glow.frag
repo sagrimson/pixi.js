@@ -1,11 +1,12 @@
 varying vec2 vTextureCoord;
 uniform sampler2D uSampler;
 uniform float m[20];
+uniform float u_color;
 
 void main(void)
 {
 
-    vec4 c = texture2D(uSampler, vTextureCoord);
+    vec4 c = u_color * texture2D(uSampler, vTextureCoord);
 
     gl_FragColor.r = (m[0] * c.r);
         gl_FragColor.r += (m[1] * c.g);
@@ -31,5 +32,5 @@ void main(void)
         gl_FragColor.a += (m[18] * c.a);
         gl_FragColor.a += m[19] * c.a;
 
-//    gl_FragColor = vec4(m[0]);
+    gl_FragColor = c;
 }

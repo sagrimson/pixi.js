@@ -24559,7 +24559,7 @@ core.utils.canUseNewCanvasBlendModes = function() {
 };
 
 
-},{"./core":60,"./core/const":42,"./extras":127,"./filters":140,"./mesh":156,"./particles":159}],118:[function(require,module,exports){
+},{"./core":60,"./core/const":42,"./extras":127,"./filters":142,"./mesh":158,"./particles":161}],118:[function(require,module,exports){
 var core = require('../../core'),
     tempRect = new core.Rectangle();
 
@@ -27877,8 +27877,12 @@ Object.defineProperties(DropShadowFilter.prototype, {
         }
     }
 });
-},{"../../core":60,"../blur/BlurXFilter":130,"../blur/BlurYFilter":131,"../void/VoidFilter":142}],139:[function(require,module,exports){
+},{"../../core":60,"../blur/BlurXFilter":130,"../blur/BlurYFilter":131,"../void/VoidFilter":144}],139:[function(require,module,exports){
 var core = require('../../core');
+
+var generateGlowVertSource  = require('./generateGlowVertSource');
+var generateGlowFragSource  = require('./generateGlowFragSource');
+
 // @see https://github.com/substack/brfs/issues/25
 
 
@@ -27897,522 +27901,38 @@ var core = require('../../core');
  * @extends PIXI.Filter
  * @memberof PIXI.filters
  */
-function GlowFilter()
+function GlowFilter(gl)
 {
+    // this.vertexSrc = generateGlowVertSource(kernelSize, true);
+    // this.fragmentSrc = generateGlowFragSource(kernelSize, true);
+
     core.Filter.call(this,
         // vertex shader
-        "#define GLSLIFY 1\nattribute vec2 aVertexPosition;\nattribute vec2 aTextureCoord;\n\nuniform mat3 projectionMatrix;\n\nvarying vec2 vTextureCoord;\n\nvoid main(void)\n{\n    gl_Position = vec4((projectionMatrix * vec3(aVertexPosition, 1.0)).xy, 0.0, 1.0);\n    vTextureCoord = aTextureCoord;\n}",
+        generateGlowVertSource(),
         // fragment shader
-        "#define GLSLIFY 1\nvarying vec2 vTextureCoord;\nuniform sampler2D uSampler;\nuniform float m[20];\n\nvoid main(void)\n{\n\n    vec4 c = texture2D(uSampler, vTextureCoord);\n\n    gl_FragColor.r = (m[0] * c.r);\n        gl_FragColor.r += (m[1] * c.g);\n        gl_FragColor.r += (m[2] * c.b);\n        gl_FragColor.r += (m[3] * c.a);\n        gl_FragColor.r += m[4] * c.a;\n\n    gl_FragColor.g = (m[5] * c.r);\n        gl_FragColor.g += (m[6] * c.g);\n        gl_FragColor.g += (m[7] * c.b);\n        gl_FragColor.g += (m[8] * c.a);\n        gl_FragColor.g += m[9] * c.a;\n\n     gl_FragColor.b = (m[10] * c.r);\n        gl_FragColor.b += (m[11] * c.g);\n        gl_FragColor.b += (m[12] * c.b);\n        gl_FragColor.b += (m[13] * c.a);\n        gl_FragColor.b += m[14] * c.a;\n\n     gl_FragColor.a = (m[15] * c.r);\n        gl_FragColor.a += (m[16] * c.g);\n        gl_FragColor.a += (m[17] * c.b);\n        gl_FragColor.a += (m[18] * c.a);\n        gl_FragColor.a += m[19] * c.a;\n\n//    gl_FragColor = vec4(m[0]);\n}\n"
+        generateGlowFragSource()
     );
 
-    this.uniforms.m = [
-                    1, 0, 0, 0, 0,
-                    0, 1, 0, 0, 0,
-                    0, 0, 1, 0, 0,
-                    0, 0, 0, 1, 0];
-
-
+    this.passes = 2;
+    this.strength = 10;
+    this.uniforms.t = 0;
+    this.padding = 30;
 }
 
 GlowFilter.prototype = Object.create(core.Filter.prototype);
 GlowFilter.prototype.constructor = GlowFilter;
 module.exports = GlowFilter;
 
-
-/**
- * Transforms current matrix and set the new one
- *
- * @param matrix {number[]} (mat 5x4)
- * @param multiply {boolean} if true, current matrix and matrix are multiplied. If false, just set the current matrix with @param matrix
- */
-GlowFilter.prototype._loadMatrix = function (matrix, multiply)
+GlowFilter.prototype.apply = function (filterManager, input, output, clear)
 {
-    multiply = !!multiply;
+    // this.uniforms.strength = (1/output.size.width) * (output.size.width/input.size.width); /// // *  2 //4//this.strength / 4 / this.passes * (input.frame.width / input.size.width);
 
-    var newMatrix = matrix;
+    // screen space!
+    // this.uniforms.strength *= this.strength;
+    // this.uniforms.strength /= this.passes;
 
-    if (multiply) {
-        this._multiply(newMatrix, this.uniforms.m, matrix);
-        newMatrix = this._glow(newMatrix);
-    }
-
-    // set the new matrix
-    this.uniforms.m = newMatrix;
+    filterManager.applyFilter(this, input, output, clear);
 };
-
-/**
- * Multiplies two mat5's
- *
- * @param out {number[]} (mat 5x4) the receiving matrix
- * @param a {number[]} (mat 5x4) the first operand
- * @param b {number[]} (mat 5x4) the second operand
- * @returns out {number[]} (mat 5x4)
- */
-GlowFilter.prototype._multiply = function (out, a, b)
-{
-
-    // Red Channel
-    out[0] = (a[0] * b[0]) + (a[1] * b[5]) + (a[2] * b[10]) + (a[3] * b[15]);
-    out[1] = (a[0] * b[1]) + (a[1] * b[6]) + (a[2] * b[11]) + (a[3] * b[16]);
-    out[2] = (a[0] * b[2]) + (a[1] * b[7]) + (a[2] * b[12]) + (a[3] * b[17]);
-    out[3] = (a[0] * b[3]) + (a[1] * b[8]) + (a[2] * b[13]) + (a[3] * b[18]);
-    out[4] = (a[0] * b[4]) + (a[1] * b[9]) + (a[2] * b[14]) + (a[3] * b[19]);
-
-    // Green Channel
-    out[5] = (a[5] * b[0]) + (a[6] * b[5]) + (a[7] * b[10]) + (a[8] * b[15]);
-    out[6] = (a[5] * b[1]) + (a[6] * b[6]) + (a[7] * b[11]) + (a[8] * b[16]);
-    out[7] = (a[5] * b[2]) + (a[6] * b[7]) + (a[7] * b[12]) + (a[8] * b[17]);
-    out[8] = (a[5] * b[3]) + (a[6] * b[8]) + (a[7] * b[13]) + (a[8] * b[18]);
-    out[9] = (a[5] * b[4]) + (a[6] * b[9]) + (a[7] * b[14]) + (a[8] * b[19]);
-
-    // Blue Channel
-    out[10] = (a[10] * b[0]) + (a[11] * b[5]) + (a[12] * b[10]) + (a[13] * b[15]);
-    out[11] = (a[10] * b[1]) + (a[11] * b[6]) + (a[12] * b[11]) + (a[13] * b[16]);
-    out[12] = (a[10] * b[2]) + (a[11] * b[7]) + (a[12] * b[12]) + (a[13] * b[17]);
-    out[13] = (a[10] * b[3]) + (a[11] * b[8]) + (a[12] * b[13]) + (a[13] * b[18]);
-    out[14] = (a[10] * b[4]) + (a[11] * b[9]) + (a[12] * b[14]) + (a[13] * b[19]);
-
-    // Alpha Channel
-    out[15] = (a[15] * b[0]) + (a[16] * b[5]) + (a[17] * b[10]) + (a[18] * b[15]);
-    out[16] = (a[15] * b[1]) + (a[16] * b[6]) + (a[17] * b[11]) + (a[18] * b[16]);
-    out[17] = (a[15] * b[2]) + (a[16] * b[7]) + (a[17] * b[12]) + (a[18] * b[17]);
-    out[18] = (a[15] * b[3]) + (a[16] * b[8]) + (a[17] * b[13]) + (a[18] * b[18]);
-    out[19] = (a[15] * b[4]) + (a[16] * b[9]) + (a[17] * b[14]) + (a[18] * b[19]);
-
-    return out;
-};
-
-/**
- * Create a Float32 Array and normalize the offset component to 0-1
- *
- * @param matrix {number[]} (mat 5x4)
- * @return m {number[]} (mat 5x4) with all values between 0-1
- */
-GlowFilter.prototype._glow = function (matrix)
-{
-    // Create a Float32 Array and normalize the offset component to 0-1
-    var m = new Float32Array(matrix);
-    m[4] /= 255;
-    m[9] /= 255;
-    m[14] /= 255;
-    m[19] /= 255;
-
-    return m;
-};
-
-/**
- * Adjusts brightness
- *
- * @param b {number} value of the brigthness (0 is black)
- * @param multiply {boolean} refer to ._loadMatrix() method
- */
-GlowFilter.prototype.brightness = function (b, multiply)
-{
-    var matrix = [
-        b, 0, 0, 0, 0,
-        0, b, 0, 0, 0,
-        0, 0, b, 0, 0,
-        0, 0, 0, 1, 0
-    ];
-
-    this._loadMatrix(matrix, multiply);
-};
-
-/**
- * Set the matrices in grey scales
- *
- * @param scale {number} value of the grey (0 is black)
- * @param multiply {boolean} refer to ._loadMatrix() method
- */
-GlowFilter.prototype.greyscale = function (scale, multiply)
-{
-    var matrix = [
-        scale, scale, scale, 0, 0,
-        scale, scale, scale, 0, 0,
-        scale, scale, scale, 0, 0,
-        0, 0, 0, 1, 0
-    ];
-
-    this._loadMatrix(matrix, multiply);
-};
-//Americanized alias
-GlowFilter.prototype.grayscale = GlowFilter.prototype.greyscale;
-
-/**
- * Set the black and white matrice
- * Multiply the current matrix
- *
- * @param multiply {boolean} refer to ._loadMatrix() method
- */
-GlowFilter.prototype.blackAndWhite = function (multiply)
-{
-    var matrix = [
-        0.3, 0.6, 0.1, 0, 0,
-        0.3, 0.6, 0.1, 0, 0,
-        0.3, 0.6, 0.1, 0, 0,
-        0, 0, 0, 1, 0
-    ];
-
-    this._loadMatrix(matrix, multiply);
-};
-
-/**
- * Set the hue property of the color
- *
- * @param rotation {number} in degrees
- * @param multiply {boolean} refer to ._loadMatrix() method
- */
-GlowFilter.prototype.hue = function (rotation, multiply)
-{
-    rotation = (rotation || 0) / 180 * Math.PI;
-
-    var cosR = Math.cos(rotation),
-        sinR = Math.sin(rotation),
-        sqrt = Math.sqrt;
-
-    /*a good approximation for hue rotation
-    This matrix is far better than the versions with magic luminance constants
-    formerly used here, but also used in the starling framework (flash) and known from this
-    old part of the internet: quasimondo.com/archives/000565.php
-
-    This new matrix is based on rgb cube rotation in space. Look here for a more descriptive
-    implementation as a shader not a general matrix:
-    https://github.com/evanw/glfx.js/blob/58841c23919bd59787effc0333a4897b43835412/src/filters/adjust/huesaturation.js
-
-    This is the source for the code:
-    see http://stackoverflow.com/questions/8507885/shift-hue-of-an-rgb-color/8510751#8510751
-    */
-
-    var w = 1/3, sqrW = sqrt(w);//weight is
-
-    var a00 = cosR + (1.0 - cosR) * w;
-    var a01 = w * (1.0 - cosR) - sqrW * sinR;
-    var a02 = w * (1.0 - cosR) + sqrW * sinR;
-
-    var a10 = w * (1.0 - cosR) + sqrW * sinR;
-    var a11 = cosR + w*(1.0 - cosR);
-    var a12 = w * (1.0 - cosR) - sqrW * sinR;
-
-    var a20 = w * (1.0 - cosR) - sqrW * sinR;
-    var a21 = w * (1.0 - cosR) + sqrW * sinR;
-    var a22 = cosR + w * (1.0 - cosR);
-
-
-    var matrix = [
-      a00, a01, a02, 0, 0,
-      a10, a11, a12, 0, 0,
-      a20, a21, a22, 0, 0,
-      0, 0, 0, 1, 0,
-    ];
-
-    this._loadMatrix(matrix, multiply);
-};
-
-
-/**
- * Set the contrast matrix, increase the separation between dark and bright
- * Increase contrast : shadows darker and highlights brighter
- * Decrease contrast : bring the shadows up and the highlights down
- *
- * @param amount {number} value of the contrast
- * @param multiply {boolean} refer to ._loadMatrix() method
- */
-GlowFilter.prototype.contrast = function (amount, multiply)
-{
-    var v = (amount || 0) + 1;
-    var o = -128 * (v - 1);
-
-    var matrix = [
-        v, 0, 0, 0, o,
-        0, v, 0, 0, o,
-        0, 0, v, 0, o,
-        0, 0, 0, 1, 0
-    ];
-
-    this._loadMatrix(matrix, multiply);
-};
-
-/**
- * Set the saturation matrix, increase the separation between colors
- * Increase saturation : increase contrast, brightness, and sharpness
- *
- * @param [amount=0] {number}
- * @param [multiply] {boolean} refer to ._loadMatrix() method
- */
-GlowFilter.prototype.saturate = function (amount, multiply)
-{
-    var x = (amount || 0) * 2 / 3 + 1;
-    var y = ((x - 1) * -0.5);
-
-    var matrix = [
-        x, y, y, 0, 0,
-        y, x, y, 0, 0,
-        y, y, x, 0, 0,
-        0, 0, 0, 1, 0
-    ];
-
-    this._loadMatrix(matrix, multiply);
-};
-
-/**
- * Desaturate image (remove color)
- *
- * Call the saturate function
- *
- */
-GlowFilter.prototype.desaturate = function () // jshint unused:false
-{
-    this.saturate(-1);
-};
-
-/**
- * Negative image (inverse of classic rgb matrix)
- *
- * @param multiply {boolean} refer to ._loadMatrix() method
- */
-GlowFilter.prototype.negative = function (multiply)
-{
-    var matrix = [
-        0, 1, 1, 0, 0,
-        1, 0, 1, 0, 0,
-        1, 1, 0, 0, 0,
-        0, 0, 0, 1, 0
-    ];
-
-    this._loadMatrix(matrix, multiply);
-};
-
-/**
- * Sepia image
- *
- * @param multiply {boolean} refer to ._loadMatrix() method
- */
-GlowFilter.prototype.sepia = function (multiply)
-{
-    var matrix = [
-        0.393, 0.7689999, 0.18899999, 0, 0,
-        0.349, 0.6859999, 0.16799999, 0, 0,
-        0.272, 0.5339999, 0.13099999, 0, 0,
-        0, 0, 0, 1, 0
-    ];
-
-    this._loadMatrix(matrix, multiply);
-};
-
-/**
- * Color motion picture process invented in 1916 (thanks Dominic Szablewski)
- *
- * @param multiply {boolean} refer to ._loadMatrix() method
- */
-GlowFilter.prototype.technicolor = function (multiply)
-{
-    var matrix = [
-        1.9125277891456083, -0.8545344976951645, -0.09155508482755585, 0, 11.793603434377337,
-        -0.3087833385928097, 1.7658908555458428, -0.10601743074722245, 0, -70.35205161461398,
-        -0.231103377548616, -0.7501899197440212, 1.847597816108189, 0, 30.950940869491138,
-        0, 0, 0, 1, 0
-    ];
-
-    this._loadMatrix(matrix, multiply);
-};
-
-/**
- * Polaroid filter
- *
- * @param multiply {boolean} refer to ._loadMatrix() method
- */
-GlowFilter.prototype.polaroid = function (multiply)
-{
-    var matrix = [
-        1.438, -0.062, -0.062, 0, 0,
-        -0.122, 1.378, -0.122, 0, 0,
-        -0.016, -0.016, 1.483, 0, 0,
-        0, 0, 0, 1, 0
-    ];
-
-    this._loadMatrix(matrix, multiply);
-};
-
-/**
- * Filter who transforms : Red -> Blue and Blue -> Red
- *
- * @param multiply {boolean} refer to ._loadMatrix() method
- */
-GlowFilter.prototype.toBGR = function (multiply)
-{
-    var matrix = [
-        0, 0, 1, 0, 0,
-        0, 1, 0, 0, 0,
-        1, 0, 0, 0, 0,
-        0, 0, 0, 1, 0
-    ];
-
-    this._loadMatrix(matrix, multiply);
-};
-
-/**
- * Color reversal film introduced by Eastman Kodak in 1935. (thanks Dominic Szablewski)
- *
- * @param multiply {boolean} refer to ._loadMatrix() method
- */
-GlowFilter.prototype.kodachrome = function (multiply)
-{
-    var matrix = [
-        1.1285582396593525, -0.3967382283601348, -0.03992559172921793, 0, 63.72958762196502,
-        -0.16404339962244616, 1.0835251566291304, -0.05498805115633132, 0, 24.732407896706203,
-        -0.16786010706155763, -0.5603416277695248, 1.6014850761964943, 0, 35.62982807460946,
-        0, 0, 0, 1, 0
-    ];
-
-    this._loadMatrix(matrix, multiply);
-};
-
-/**
- * Brown delicious browni filter (thanks Dominic Szablewski)
- *
- * @param multiply {boolean} refer to ._loadMatrix() method
- */
-GlowFilter.prototype.browni = function (multiply)
-{
-    var matrix = [
-        0.5997023498159715, 0.34553243048391263, -0.2708298674538042, 0, 47.43192855600873,
-        -0.037703249837783157, 0.8609577587992641, 0.15059552388459913, 0, -36.96841498319127,
-        0.24113635128153335, -0.07441037908422492, 0.44972182064877153, 0, -7.562075277591283,
-        0, 0, 0, 1, 0
-    ];
-
-    this._loadMatrix(matrix, multiply);
-};
-
-/*
- * Vintage filter (thanks Dominic Szablewski)
- *
- * @param multiply {boolean} refer to ._loadMatrix() method
- */
-GlowFilter.prototype.vintage = function (multiply)
-{
-    var matrix = [
-        0.6279345635605994, 0.3202183420819367, -0.03965408211312453, 0, 9.651285835294123,
-        0.02578397704808868, 0.6441188644374771, 0.03259127616149294, 0, 7.462829176470591,
-        0.0466055556782719, -0.0851232987247891, 0.5241648018700465, 0, 5.159190588235296,
-        0, 0, 0, 1, 0
-    ];
-
-    this._loadMatrix(matrix, multiply);
-};
-
-/*
- * We don't know exactly what it does, kind of gradient map, but funny to play with!
- *
- * @param desaturation {number}
- * @param toned {number}
- * @param lightColor {string} (example : "0xFFE580")
- * @param darkColor {string}  (example : "0xFFE580")
- *
- * @param multiply {boolean} refer to ._loadMatrix() method
- */
-GlowFilter.prototype.colorTone = function (desaturation, toned, lightColor, darkColor, multiply)
-{
-    desaturation = desaturation || 0.2;
-    toned = toned || 0.15;
-    lightColor = lightColor || 0xFFE580;
-    darkColor = darkColor || 0x338000;
-
-    var lR = ((lightColor >> 16) & 0xFF) / 255;
-    var lG = ((lightColor >> 8) & 0xFF) / 255;
-    var lB = (lightColor & 0xFF) / 255;
-
-    var dR = ((darkColor >> 16) & 0xFF) / 255;
-    var dG = ((darkColor >> 8) & 0xFF) / 255;
-    var dB = (darkColor & 0xFF) / 255;
-
-    var matrix = [
-        0.3, 0.59, 0.11, 0, 0,
-        lR, lG, lB, desaturation, 0,
-        dR, dG, dB, toned, 0,
-        lR - dR, lG - dG, lB - dB, 0, 0
-    ];
-
-    this._loadMatrix(matrix, multiply);
-};
-
-/*
- * Night effect
- *
- * @param intensity {number}
- * @param multiply {boolean} refer to ._loadMatrix() method
- */
-GlowFilter.prototype.night = function (intensity, multiply)
-{
-    intensity = intensity || 0.1;
-    var matrix = [
-        intensity * ( -2.0), -intensity, 0, 0, 0,
-        -intensity, 0, intensity, 0, 0,
-        0, intensity, intensity * 2.0, 0, 0,
-        0, 0, 0, 1, 0
-    ];
-
-    this._loadMatrix(matrix, multiply);
-};
-
-
-/*
- * Predator effect
- *
- * Erase the current matrix by setting a new indepent one
- *
- * @param amount {number} how much the predator feels his future victim
- * @param multiply {boolean} refer to ._loadMatrix() method
- */
-GlowFilter.prototype.predator = function (amount, multiply)
-{
-    var matrix = [
-        11.224130630493164 * amount, -4.794486999511719 * amount, -2.8746118545532227 * amount, 0 * amount, 0.40342438220977783 * amount,
-        -3.6330697536468506 * amount, 9.193157196044922 * amount, -2.951810836791992 * amount, 0 * amount, -1.316135048866272 * amount,
-        -3.2184197902679443 * amount, -4.2375030517578125 * amount, 7.476448059082031 * amount, 0 * amount, 0.8044459223747253 * amount,
-        0, 0, 0, 1, 0
-    ];
-
-    this._loadMatrix(matrix, multiply);
-};
-
-/*
- * LSD effect
- *
- * Multiply the current matrix
- *
- * @param amount {number} How crazy is your effect
- * @param multiply {boolean} refer to ._loadMatrix() method
- */
-GlowFilter.prototype.lsd = function (multiply)
-{
-    var matrix = [
-        2, -0.4, 0.5, 0, 0,
-        -0.5, 2, -0.4, 0, 0,
-        -0.4, -0.5, 3, 0, 0,
-        0, 0, 0, 1, 0
-    ];
-
-    this._loadMatrix(matrix, multiply);
-};
-
-/*
- * Erase the current matrix by setting the default one
- *
- */
-GlowFilter.prototype.reset = function ()
-{
-    var matrix = [
-        1, 0, 0, 0, 0,
-        0, 1, 0, 0, 0,
-        0, 0, 1, 0, 0,
-        0, 0, 0, 1, 0
-    ];
-
-    this._loadMatrix(matrix, false);
-};
-
 
 Object.defineProperties(GlowFilter.prototype, {
     /**
@@ -28422,19 +27942,79 @@ Object.defineProperties(GlowFilter.prototype, {
      * @memberof PIXI.filters.GlowFilter#
      * @default [1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 1, 0]
      */
-    matrix: {
-        get: function ()
-        {
-            return this.uniforms.m;
-        },
-        set: function (value)
-        {
-            this.uniforms.m = value;
-        }
-    }
+    // matrix: {
+    //     get: function ()
+    //     {
+    //         return this.uniforms.m;
+    //     },
+    //     set: function (value)
+    //     {
+    //         this.uniforms.m = value;
+    //     }
+    // },
+    // color: {
+    //     get: function ()
+    //     {
+    //         return this.uniforms.u_color;
+    //     },
+    //     set: function (value)
+    //     {
+    //         this.uniforms.u_color = value;
+    //     }
+    // }
 });
 
-},{"../../core":60}],140:[function(require,module,exports){
+},{"../../core":60,"./generateGlowFragSource":140,"./generateGlowVertSource":141}],140:[function(require,module,exports){
+var fragTemplate = [
+    'precision mediump float;',
+    'varying vec2 vTextureCoord;',
+    'uniform sampler2D uSampler;',
+    'uniform float t;',
+    'void main(void)',
+    '{',
+    '   float shine = 1. - smoothstep(0.15, 0.35, abs(t - vTextureCoord.x));',
+    // '   vec4 color = texture2D(uSampler, vTextureCoord) * shine;',
+    '   gl_FragColor = texture2D(uSampler, vTextureCoord) + texture2D(uSampler, vTextureCoord) * shine;',
+    '   float average = 1.;',
+    '   float intensity = 0.5;',
+    '}'
+
+].join('\n');
+
+var generateFragGlowSource = function () {
+    var fragSource = fragTemplate;
+
+    return fragSource;
+};
+
+module.exports = generateFragGlowSource;
+
+},{}],141:[function(require,module,exports){
+
+var vertTemplate = [
+    'precision mediump float;',
+    'attribute vec2 aVertexPosition;',
+    'attribute vec2 aTextureCoord;',
+    'uniform mat3 projectionMatrix;',
+    'varying vec2 vTextureCoord;',
+
+    'void main(void)',
+    '{',
+        'gl_Position = vec4((projectionMatrix * vec3((aVertexPosition), 1.0)).xy, 0.0, 1.0);',
+        'vTextureCoord = aTextureCoord;',
+    '}'
+].join('\n');
+
+var generateVertGlowSource = function()
+{
+    var vertSource = vertTemplate;
+
+    return vertSource;
+};
+
+module.exports = generateVertGlowSource;
+
+},{}],142:[function(require,module,exports){
 /**
  * @file        Main export of the PIXI filters library
  * @author      Mat Groves <mat@goodboydigital.com>
@@ -28458,7 +28038,7 @@ module.exports = {
     DropShadowFilter:         require('./glow/DropShadowFilter')
 };
 
-},{"./blur/BlurFilter":129,"./blur/BlurXFilter":130,"./blur/BlurYFilter":131,"./colormatrix/ColorMatrixFilter":135,"./displacement/DisplacementFilter":136,"./fxaa/FXAAFilter":137,"./glow/DropShadowFilter":138,"./glow/GlowFilter":139,"./noise/NoiseFilter":141,"./void/VoidFilter":142}],141:[function(require,module,exports){
+},{"./blur/BlurFilter":129,"./blur/BlurXFilter":130,"./blur/BlurYFilter":131,"./colormatrix/ColorMatrixFilter":135,"./displacement/DisplacementFilter":136,"./fxaa/FXAAFilter":137,"./glow/DropShadowFilter":138,"./glow/GlowFilter":139,"./noise/NoiseFilter":143,"./void/VoidFilter":144}],143:[function(require,module,exports){
 var core = require('../../core');
 
 
@@ -28510,7 +28090,7 @@ Object.defineProperties(NoiseFilter.prototype, {
     }
 });
 
-},{"../../core":60}],142:[function(require,module,exports){
+},{"../../core":60}],144:[function(require,module,exports){
 var core = require('../../core');
 // @see https://github.com/substack/brfs/issues/25
 
@@ -28538,7 +28118,7 @@ VoidFilter.prototype = Object.create(core.Filter.prototype);
 VoidFilter.prototype.constructor = VoidFilter;
 module.exports = VoidFilter;
 
-},{"../../core":60}],143:[function(require,module,exports){
+},{"../../core":60}],145:[function(require,module,exports){
 (function (global){
 // run the polyfills
 require('./polyfill');
@@ -28573,7 +28153,7 @@ Object.assign(core, require('./deprecation'));
 global.PIXI = core;
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"./accessibility":40,"./core":60,"./deprecation":117,"./extract":119,"./extras":127,"./filters":140,"./interaction":146,"./loaders":149,"./mesh":156,"./particles":159,"./polyfill":165,"./prepare":168}],144:[function(require,module,exports){
+},{"./accessibility":40,"./core":60,"./deprecation":117,"./extract":119,"./extras":127,"./filters":142,"./interaction":148,"./loaders":151,"./mesh":158,"./particles":161,"./polyfill":167,"./prepare":170}],146:[function(require,module,exports){
 var core = require('../core');
 
 /**
@@ -28622,7 +28202,7 @@ InteractionData.prototype.getLocalPosition = function (displayObject, point, glo
     return displayObject.worldTransform.applyInverse(globalPos || this.global, point);
 };
 
-},{"../core":60}],145:[function(require,module,exports){
+},{"../core":60}],147:[function(require,module,exports){
 var core = require('../core'),
     InteractionData = require('./InteractionData');
 
@@ -29574,7 +29154,7 @@ InteractionManager.prototype.destroy = function () {
 core.WebGLRenderer.registerPlugin('interaction', InteractionManager);
 core.CanvasRenderer.registerPlugin('interaction', InteractionManager);
 
-},{"../core":60,"./InteractionData":144,"./interactiveTarget":147}],146:[function(require,module,exports){
+},{"../core":60,"./InteractionData":146,"./interactiveTarget":149}],148:[function(require,module,exports){
 /**
  * @file        Main export of the PIXI interactions library
  * @author      Mat Groves <mat@goodboydigital.com>
@@ -29591,7 +29171,7 @@ module.exports = {
     interactiveTarget:  require('./interactiveTarget')
 };
 
-},{"./InteractionData":144,"./InteractionManager":145,"./interactiveTarget":147}],147:[function(require,module,exports){
+},{"./InteractionData":146,"./InteractionManager":147,"./interactiveTarget":149}],149:[function(require,module,exports){
 /**
  * Default property values of interactive objects
  * Used by {@link PIXI.interaction.InteractionManager} to automatically give all DisplayObjects these properties
@@ -29680,7 +29260,7 @@ var interactiveTarget = {
 
 module.exports = interactiveTarget;
 
-},{}],148:[function(require,module,exports){
+},{}],150:[function(require,module,exports){
 var Resource = require('resource-loader').Resource,
     core = require('../core'),
     extras = require('../extras'),
@@ -29806,7 +29386,7 @@ module.exports = function ()
     };
 };
 
-},{"../core":60,"../extras":127,"path":3,"resource-loader":35}],149:[function(require,module,exports){
+},{"../core":60,"../extras":127,"path":3,"resource-loader":35}],151:[function(require,module,exports){
 /**
  * @file        Main export of the PIXI loaders library
  * @author      Mat Groves <mat@goodboydigital.com>
@@ -29827,7 +29407,7 @@ module.exports = {
     Resource:           require('resource-loader').Resource
 };
 
-},{"./bitmapFontParser":148,"./loader":150,"./spritesheetParser":151,"./textureParser":152,"resource-loader":35}],150:[function(require,module,exports){
+},{"./bitmapFontParser":150,"./loader":152,"./spritesheetParser":153,"./textureParser":154,"resource-loader":35}],152:[function(require,module,exports){
 var ResourceLoader = require('resource-loader'),
     textureParser = require('./textureParser'),
     spritesheetParser = require('./spritesheetParser'),
@@ -29890,7 +29470,7 @@ var Resource = ResourceLoader.Resource;
 
 Resource.setExtensionXhrType('fnt', Resource.XHR_RESPONSE_TYPE.DOCUMENT);
 
-},{"./bitmapFontParser":148,"./spritesheetParser":151,"./textureParser":152,"resource-loader":35}],151:[function(require,module,exports){
+},{"./bitmapFontParser":150,"./spritesheetParser":153,"./textureParser":154,"resource-loader":35}],153:[function(require,module,exports){
 var Resource = require('resource-loader').Resource,
     path = require('path'),
     core = require('../core'),
@@ -30007,7 +29587,7 @@ module.exports = function ()
     };
 };
 
-},{"../core":60,"async":1,"path":3,"resource-loader":35}],152:[function(require,module,exports){
+},{"../core":60,"async":1,"path":3,"resource-loader":35}],154:[function(require,module,exports){
 var core = require('../core');
 
 module.exports = function ()
@@ -30029,7 +29609,7 @@ module.exports = function ()
     };
 };
 
-},{"../core":60}],153:[function(require,module,exports){
+},{"../core":60}],155:[function(require,module,exports){
 var core = require('../core'),
     glCore = require('pixi-gl-core'),
     Shader = require('./webgl/MeshShader'),
@@ -30590,7 +30170,7 @@ Mesh.DRAW_MODES = {
     TRIANGLES: 1
 };
 
-},{"../core":60,"./webgl/MeshShader":157,"pixi-gl-core":21}],154:[function(require,module,exports){
+},{"../core":60,"./webgl/MeshShader":159,"pixi-gl-core":21}],156:[function(require,module,exports){
 var Mesh = require('./Mesh');
 
 /**
@@ -30715,7 +30295,7 @@ Plane.prototype._onTextureUpdate = function ()
     }
 };
 
-},{"./Mesh":153}],155:[function(require,module,exports){
+},{"./Mesh":155}],157:[function(require,module,exports){
 var Mesh = require('./Mesh');
 var core = require('../core');
 
@@ -30930,7 +30510,7 @@ Rope.prototype.updateTransform = function ()
     this.containerUpdateTransform();
 };
 
-},{"../core":60,"./Mesh":153}],156:[function(require,module,exports){
+},{"../core":60,"./Mesh":155}],158:[function(require,module,exports){
 /**
  * @file        Main export of the PIXI extras library
  * @author      Mat Groves <mat@goodboydigital.com>
@@ -30948,7 +30528,7 @@ module.exports = {
     MeshShader:     require('./webgl/MeshShader')
 };
 
-},{"./Mesh":153,"./Plane":154,"./Rope":155,"./webgl/MeshShader":157}],157:[function(require,module,exports){
+},{"./Mesh":155,"./Plane":156,"./Rope":157,"./webgl/MeshShader":159}],159:[function(require,module,exports){
 var Shader = require('../../core/Shader');
 
 /**
@@ -30996,7 +30576,7 @@ MeshShader.prototype.constructor = MeshShader;
 module.exports = MeshShader;
 
 
-},{"../../core/Shader":41}],158:[function(require,module,exports){
+},{"../../core/Shader":41}],160:[function(require,module,exports){
 var core = require('../core');
 
 /**
@@ -31328,7 +30908,7 @@ ParticleContainer.prototype.destroy = function () {
     this._buffers = null;
 };
 
-},{"../core":60}],159:[function(require,module,exports){
+},{"../core":60}],161:[function(require,module,exports){
 /**
  * @file        Main export of the PIXI extras library
  * @author      Mat Groves <mat@goodboydigital.com>
@@ -31344,7 +30924,7 @@ module.exports = {
     ParticleRenderer: 			 require('./webgl/ParticleRenderer')
 };
 
-},{"./ParticleContainer":158,"./webgl/ParticleRenderer":161}],160:[function(require,module,exports){
+},{"./ParticleContainer":160,"./webgl/ParticleRenderer":163}],162:[function(require,module,exports){
 var glCore = require('pixi-gl-core'),
     createIndicesForQuads = require('../../core/utils/createIndicesForQuads');
 
@@ -31565,7 +31145,7 @@ ParticleBuffer.prototype.destroy = function ()
     this.staticBuffer.destroy();
 };
 
-},{"../../core/utils/createIndicesForQuads":112,"pixi-gl-core":21}],161:[function(require,module,exports){
+},{"../../core/utils/createIndicesForQuads":112,"pixi-gl-core":21}],163:[function(require,module,exports){
 var core = require('../../core'),
     ParticleShader = require('./ParticleShader'),
     ParticleBuffer = require('./ParticleBuffer');
@@ -31997,7 +31577,7 @@ ParticleRenderer.prototype.destroy = function ()
     this.tempMatrix = null;
 };
 
-},{"../../core":60,"./ParticleBuffer":160,"./ParticleShader":162}],162:[function(require,module,exports){
+},{"../../core":60,"./ParticleBuffer":162,"./ParticleShader":164}],164:[function(require,module,exports){
 var Shader = require('../../core/Shader');
 
 /**
@@ -32063,7 +31643,7 @@ ParticleShader.prototype.constructor = ParticleShader;
 
 module.exports = ParticleShader;
 
-},{"../../core/Shader":41}],163:[function(require,module,exports){
+},{"../../core/Shader":41}],165:[function(require,module,exports){
 // References:
 // https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Math/sign
 
@@ -32079,7 +31659,7 @@ if (!Math.sign)
     };
 }
 
-},{}],164:[function(require,module,exports){
+},{}],166:[function(require,module,exports){
 // References:
 // https://github.com/sindresorhus/object-assign
 // https://developer.mozilla.org/en-US/docs/Web/JavaScript/Reference/Global_Objects/Object/assign
@@ -32089,7 +31669,7 @@ if (!Object.assign)
     Object.assign = require('object-assign');
 }
 
-},{"object-assign":14}],165:[function(require,module,exports){
+},{"object-assign":14}],167:[function(require,module,exports){
 require('./Object.assign');
 require('./requestAnimationFrame');
 require('./Math.sign');
@@ -32107,7 +31687,7 @@ if(!window.Uint16Array){
   window.Uint16Array = Array;
 }
 
-},{"./Math.sign":163,"./Object.assign":164,"./requestAnimationFrame":166}],166:[function(require,module,exports){
+},{"./Math.sign":165,"./Object.assign":166,"./requestAnimationFrame":168}],168:[function(require,module,exports){
 (function (global){
 // References:
 // http://paulirish.com/2011/requestanimationframe-for-smart-animating/
@@ -32177,7 +31757,7 @@ if (!global.cancelAnimationFrame) {
 }
 
 }).call(this,typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{}],167:[function(require,module,exports){
+},{}],169:[function(require,module,exports){
 var core = require('../../core');
 
 /**
@@ -32237,13 +31817,13 @@ CanvasPrepare.prototype.destroy = function()
 };
 
 core.CanvasRenderer.registerPlugin('prepare', CanvasPrepare);
-},{"../../core":60}],168:[function(require,module,exports){
+},{"../../core":60}],170:[function(require,module,exports){
 
 module.exports = {
     webGL: require('./webgl/WebGLPrepare'),
     canvas: require('./canvas/CanvasPrepare')
 };
-},{"./canvas/CanvasPrepare":167,"./webgl/WebGLPrepare":169}],169:[function(require,module,exports){
+},{"./canvas/CanvasPrepare":169,"./webgl/WebGLPrepare":171}],171:[function(require,module,exports){
 var core = require('../../core'),
     SharedTicker = core.ticker.shared;
 
@@ -32547,6 +32127,6 @@ function findGraphics(item, queue)
 }
 
 core.WebGLRenderer.registerPlugin('prepare', WebGLPrepare);
-},{"../../core":60}]},{},[143])(143)
+},{"../../core":60}]},{},[145])(145)
 });
 //# sourceMappingURL=pixi.js.map
